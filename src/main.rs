@@ -1,5 +1,8 @@
+use std::error::Error;
+
 use clap::Parser;
 use rand::{Rng, RngCore};
+use serde::Deserialize;
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -7,7 +10,9 @@ struct Args {
     question: String
 }
 
-fn main() {
+fn main() -> Result<(), Box<dyn Error>> {
+    let config = Config::from_file("./data/config.json")?;
+
     let args = Args::parse();
 
     let llm_client = LlmClientStub;
@@ -16,10 +21,13 @@ fn main() {
 
     let answer = llm_client.ask_question(&question);
 
-    println!("Question asked (id: {}): '{}'.", &question.id, &question.question);
+    println!("[User] asked ({}):", &question.id);
+    println!("{}\n", &question.question);
 
-    println!("Answer (id: {}): \n", &answer.id);
+    println!("[{}] answered ({}):", &config.agent_name, &answer.id);
     println!("{}\n", &answer.answer);
+
+    Ok(())
 }
 
 trait LlmClient {
@@ -55,9 +63,7 @@ struct Question {
 
 impl Question {
     fn new(question: &str) -> Self {
-        let mut rand = rand::thread_rng();
-
-        let id = rand.next_u64().to_string();
+        let id = generate_id();
 
         Self {
             id,
@@ -73,15 +79,48 @@ struct Answer {
 
 impl Answer {
     fn new(answer: &str) -> Self {
-        let mut rand = rand::thread_rng();
-
-        let id = rand.next_u64().to_string();
+        let id = generate_id();
 
         Self {
             id,
             answer: answer.to_string()
         }
     }
+}
+
+fn generate_id() -> String {
+    let mut rand = rand::thread_rng();
+
+    let id = rand.next_u64().to_string();
+
+    id
+}
+
+struct Config {
+    agent_name: String,
+    llm_api_key: String,
+    llm_url: String
+}
+
+impl Config {
+    pub fn from_file(file_path: &str) -> Result<Self, Box<dyn Error>> {
+        let file_content = std::fs::read_to_string(file_path)?;
+
+        let config_json: ConfigFile = serde_json::from_str(&file_content)?;
+
+        Ok(Self {
+                    agent_name: config_json.agent_name.unwrap_or(String::from("Llennart")),
+                    llm_api_key: config_json.llm_api_key,
+                    llm_url: config_json.llm_url
+                })
+    }
+}
+
+#[derive(Deserialize)]
+struct ConfigFile {
+    agent_name: Option<String>,
+    llm_api_key: String,
+    llm_url: String
 }
 
 #[cfg(test)]
