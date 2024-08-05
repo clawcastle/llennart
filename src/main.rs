@@ -1,13 +1,16 @@
 use clap::Parser;
-use rand::{Rng, RngCore};
+use rand::Rng;
 
 #[derive(Parser, Debug)]
 struct Args {
-
+    #[arg(short, long)]
+    question: String
 }
 
 fn main() {
     let args = Args::parse();
+
+    println!("Question asked: {}", &args.question);
 }
 
 trait LlmClient {
