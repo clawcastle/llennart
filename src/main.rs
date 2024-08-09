@@ -1,6 +1,9 @@
+use std::error::Error;
+
 use clap::Parser;
 use config::Config;
 use rand::{Rng, RngCore};
+use serde::{Deserialize, Serialize};
 
 mod config;
 
@@ -21,25 +24,29 @@ fn main() -> anyhow::Result<()> {
 
     let question = Question::new(&args.question);
 
-    let answer = llm_client.ask_question(&question);
+    let answer = llm_client.ask_question(&question)?;
 
     println!("[User] asked ({}):", &question.id);
     println!("{}\n", &question.question);
 
     println!("[{}] answered ({}):", &config.agent_name, &answer.id);
-    println!("{}\n", &answer.answer);
+    println!("{}\n", &answer.content);
 
     Ok(())
 }
 
 trait Llm {
-    fn ask_question(&self, question: &Question) -> Answer;
+    fn ask_question(&self, question: &Question) -> anyhow::Result<Answer>;
 }
 
 struct StubLlm;
+struct OpenAiLlm {
+    model: OpenAiModel,
+    api_key: String
+}
 
 impl Llm for StubLlm {
-    fn ask_question(&self, question: &Question) -> Answer {
+    fn ask_question(&self, question: &Question) -> anyhow::Result<Answer> {
         let mut rng = rand::thread_rng();
 
         let n: usize = rng.gen_range(20..200);
@@ -54,13 +61,92 @@ impl Llm for StubLlm {
             }
         }
         
-        Answer::new(&result)
+        Ok(Answer::new(&result))
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct OpenAiChatCompletionMessageRequest {
+    pub role: String, // TODO: How to handle role
+    pub content: String
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct OpenAiChatCompletionRequest {
+    pub model: String, // TODO: Enum
+    pub messages: Vec<OpenAiChatCompletionMessageRequest>
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct OpenAiChatCompletionChoiceResponse {
+    pub message: OpenAiChatCompletionMessageResponse
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct OpenAiChatCompletionMessageResponse {
+    pub content: String
+}
+
+
+#[derive(Debug, Clone, Deserialize)]
+struct OpenAiChatCompletionResponse {
+    pub choices: Vec<OpenAiChatCompletionChoiceResponse>
+}
+
+enum OpenAiModel {
+    Gpt4oMini
+}
+
+impl OpenAiModel {
+    fn model_string(&self) -> &'static str {
+        match self {
+            OpenAiModel::Gpt4oMini => "gpt-4o-mini",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct InvalidModelNameError;
+
+impl TryFrom<&str> for OpenAiModel {
+    type Error = InvalidModelNameError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "gpt-4o-mini" => Ok(Self::Gpt4oMini),
+            _ => Err(InvalidModelNameError)
+        }
+    }
+}
+
+impl Llm for OpenAiLlm {
+    fn ask_question(&self, question: &Question) -> anyhow::Result<Answer> {
+        let request = OpenAiChatCompletionRequest {
+            model: String::from(self.model.model_string()),
+            messages: vec![
+                OpenAiChatCompletionMessageRequest { role: String::from("system"), content: question.question.clone() }
+            ]
+        };
+
+        let request_json = serde_json::to_string(&request)?;
+
+        let client = reqwest::blocking::Client::new();
+
+        let response = client.post(format!("{}//chat/completions", OPEN_AI_API_BASE_URL)).body(request_json).send()?;
+
+        let response_json: OpenAiChatCompletionResponse  = response.json()?;
+        let answer_text = response_json.choices.first().map(|c| c.message.content.clone());
+
+        match answer_text {
+            Some(answer_text) => Ok(Answer { id: generate_id(), content: answer_text }),
+            None => todo!(),
+        }
     }
 }
 
 struct Question {
-    id: String,
-    question: String
+    pub id: String,
+    pub question: String
 }
 
 impl Question {
@@ -76,7 +162,7 @@ impl Question {
 
 struct Answer {
     id: String,
-    answer: String
+    content: String
 }
 
 impl Answer {
@@ -85,7 +171,7 @@ impl Answer {
 
         Self {
             id,
-            answer: answer.to_string()
+            content: answer.to_string()
         }
     }
 }
@@ -108,6 +194,6 @@ mod tests {
 
         let answer = llm_client.ask_question(&Question::new("question"));
 
-        println!("{}", &answer.answer);
+        println!("{}", &answer.unwrap().content);
     }
 }

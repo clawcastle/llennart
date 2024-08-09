@@ -9,7 +9,7 @@ pub struct Config {
 #[serde(tag = "type")]
 pub enum ModelConfigEntry {
     Stub { name: String },
-    OpenAiGpt35 { name: String, url: String, api_key: String }
+    OpenAi { name: String, model: String, api_key: String }
 }
 
 impl Config {
@@ -61,7 +61,7 @@ mod tests {
         assert!(parsed_config.models.len() == 2);
         
         let has_stub_llm = parsed_config.models.iter().any(|x| matches!(x, ModelConfigEntry::Stub { name: _ }));
-        let has_openai_llm = parsed_config.models.iter().any(|x| matches!(x, ModelConfigEntry::OpenAiGpt35 { name: _, url: _, api_key: _ }));
+        let has_openai_llm = parsed_config.models.iter().any(|x| matches!(x, ModelConfigEntry::OpenAi { name: _, model: _, api_key: _ }));
 
         assert!(has_stub_llm);
         assert!(has_openai_llm);
