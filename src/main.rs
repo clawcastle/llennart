@@ -4,6 +4,8 @@ use rand::{Rng, RngCore};
 
 mod config;
 
+const OPEN_AI_API_BASE_URL: &'static str = "https://api.openai.com/v1";
+
 #[derive(Parser, Debug)]
 struct Args {
     #[arg(short, long)]
@@ -108,5 +110,4 @@ mod tests {
 
         println!("{}", &answer.answer);
     }
-
 }

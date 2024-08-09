@@ -2,16 +2,14 @@ use serde::Deserialize;
 
 pub struct Config {
     pub agent_name: String,
-    pub llm_api_key: String,
-    pub llm_url: String,
-    pub llms: Vec<LlmConfigEntry>
+    pub models: Vec<ModelConfigEntry>
 }
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "type")]
-pub enum LlmConfigEntry {
+pub enum ModelConfigEntry {
     Stub { name: String },
-    OpenAi { name: String, url: String, api_key: String }
+    OpenAiGpt35 { name: String, url: String, api_key: String }
 }
 
 impl Config {
@@ -22,9 +20,7 @@ impl Config {
 
         Ok(Self {
                     agent_name: config_json.agent_name.unwrap_or(String::from("Llennart")),
-                    llm_api_key: config_json.llm_api_key,
-                    llm_url: config_json.llm_url,
-                    llms: config_json.llms
+                    models: config_json.models
                 })
     }
 }
@@ -32,16 +28,12 @@ impl Config {
 #[derive(Deserialize)]
 struct ConfigFile {
     agent_name: Option<String>,
-    llm_api_key: String,
-    llm_url: String,
-    llms: Vec<LlmConfigEntry>
+    models: Vec<ModelConfigEntry>
 }
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-
-    use crate::{config::LlmConfigEntry, StubLlm};
+    use crate::config::ModelConfigEntry;
 
     use super::ConfigFile;
 
@@ -66,10 +58,10 @@ mod tests {
 
         let parsed_config = config_file_result.unwrap();
         
-        assert!(parsed_config.llms.len() == 2);
+        assert!(parsed_config.models.len() == 2);
         
-        let has_stub_llm = parsed_config.llms.iter().any(|x| matches!(x, LlmConfigEntry::Stub { name: _ }));
-        let has_openai_llm = parsed_config.llms.iter().any(|x| matches!(x, LlmConfigEntry::OpenAi { name: _, url: _, api_key: _ }));
+        let has_stub_llm = parsed_config.models.iter().any(|x| matches!(x, ModelConfigEntry::Stub { name: _ }));
+        let has_openai_llm = parsed_config.models.iter().any(|x| matches!(x, ModelConfigEntry::OpenAiGpt35 { name: _, url: _, api_key: _ }));
 
         assert!(has_stub_llm);
         assert!(has_openai_llm);
