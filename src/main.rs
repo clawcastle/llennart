@@ -1,4 +1,3 @@
-use std::error::Error;
 
 use clap::Parser;
 use config::Config;
@@ -20,11 +19,18 @@ fn main() -> anyhow::Result<()> {
 
     let args = Args::parse();
 
-    let llm_client = StubLlm;
+    let llm: Box<dyn Llm> = match config.models.first().unwrap() {
+        config::ModelConfigEntry::Stub { name: _ } => Box::new(StubLlm),
+        config::ModelConfigEntry::OpenAi { name: _, model, api_key } => {
+            let model = OpenAiModel::try_from(model.as_str()).unwrap();
+
+            Box::new(OpenAiLlm { model, api_key: api_key.to_string() })
+        },
+    };
 
     let question = Question::new(&args.question);
 
-    let answer = llm_client.ask_question(&question)?;
+    let answer = llm.ask_question(&question)?;
 
     println!("[User] asked ({}):", &question.id);
     println!("{}\n", &question.question);
@@ -132,14 +138,29 @@ impl Llm for OpenAiLlm {
 
         let client = reqwest::blocking::Client::new();
 
-        let response = client.post(format!("{}//chat/completions", OPEN_AI_API_BASE_URL)).body(request_json).send()?;
+        let response = client.post(format!("{}//chat/completions", OPEN_AI_API_BASE_URL))
+            .header("Content-Type", "application/json")
+            .header("Authorization", format!("Bearer {}", &self.api_key))
+            .body(request_json)
+            .send()?;
 
-        let response_json: OpenAiChatCompletionResponse  = response.json()?;
-        let answer_text = response_json.choices.first().map(|c| c.message.content.clone());
+        let status = response.status();
 
-        match answer_text {
-            Some(answer_text) => Ok(Answer { id: generate_id(), content: answer_text }),
-            None => todo!(),
+        if (status.is_success()) {
+            let response_json: OpenAiChatCompletionResponse  = response.json()?;
+            let answer_text = response_json.choices.first().map(|c| c.message.content.clone());
+    
+            match answer_text {
+                Some(answer_text) => Ok(Answer { id: generate_id(), content: answer_text }),
+                None => todo!(),
+            }
+        } else {
+            let response_body = response.text()?;
+
+            println!("Request failed with status {}.", &status);
+            println!("Request failure body: {}", &response_body);
+
+            todo!();
         }
     }
 }
